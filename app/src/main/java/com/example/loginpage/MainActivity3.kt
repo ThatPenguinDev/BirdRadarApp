@@ -1,22 +1,25 @@
-// MainActivity3.kt
 package com.example.loginpage
 
 import FilterFragment
 import MapFragment
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 
-class MainActivity3 : AppCompatActivity() {
+class MainActivity3 : AppCompatActivity(), FilterFragment.FilterListener {
 
     private lateinit var bottomNavigation: BottomNavigationView
+    private lateinit var filterFragment: FilterFragment
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main3)
 
         bottomNavigation = findViewById(R.id.bottomNavigation)
+
+        // Initialize FilterFragment
+        filterFragment = FilterFragment()
 
         // Set the initial fragment
         replaceFragment(MapFragment())
@@ -32,13 +35,25 @@ class MainActivity3 : AppCompatActivity() {
             true
         }
 
-        // Select the MapFragment by default
-        bottomNavigation.selectedItemId = R.id.menu_map
+        // Set FilterListener for FilterFragment
+        filterFragment.setFilterListener(this)
     }
 
     private fun replaceFragment(fragment: Fragment) {
         supportFragmentManager.beginTransaction()
             .replace(R.id.mapContainer, fragment)
             .commit()
+    }
+
+    // Implement FilterListener methods
+    override fun onRadiusSelected(radius: Int) {
+        // Handle radius selection, e.g., apply filter to birds
+        // You may call a method in the MapFragment to filter birds based on the radius
+        // For now, let's just log the selected radius
+        println("Selected Radius: $radius")
+    }
+
+    override fun onFilterChanged(radius: Int) {
+        // Handle filter changes if needed
     }
 }

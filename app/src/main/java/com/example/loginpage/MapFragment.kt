@@ -1,6 +1,7 @@
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -8,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import androidx.core.app.ActivityCompat
 import androidx.fragment.app.Fragment
+import com.example.loginpage.R
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -16,6 +18,7 @@ import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.PolylineOptions
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -24,8 +27,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Query
-import com.example.loginpage.R
-
+import com.google.android.gms.maps.model.Marker
 
 data class Observation(
     val lat: Double,
@@ -50,10 +52,7 @@ class MapFragment : Fragment(), OnMapReadyCallback {
     private lateinit var btnLayer: ImageButton
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private var isSatelliteView = false
-
-    companion object {
-        private const val LOCATION_PERMISSION_REQUEST_CODE = 1
-    }
+    private var selectedMarker: Marker? = null
 
     private val retrofit = Retrofit.Builder()
         .baseUrl("https://api.ebird.org/v2/")
@@ -61,6 +60,41 @@ class MapFragment : Fragment(), OnMapReadyCallback {
         .build()
 
     private val eBirdService = retrofit.create(EBirdService::class.java)
+
+    interface DirectionsService {
+        @GET("json")
+        fun getDirections(
+            @Query("origin") origin: String,
+            @Query("destination") destination: String,
+            @Query("key") apiKey: String
+        ): Call<DirectionsResponse>
+    }
+
+    data class DirectionsResponse(
+        val routes: List<Route>
+    )
+
+    data class Route(
+        val legs: List<Leg>
+    )
+
+    data class Leg(
+        val steps: List<Step>
+    )
+
+    data class Step(
+        val start_location: Location,
+        val end_location: Location
+    )
+
+    data class Location(
+        val lat: Double,
+        val lng: Double
+    )
+
+    companion object {
+        private const val LOCATION_PERMISSION_REQUEST_CODE = 1
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -107,6 +141,22 @@ class MapFragment : Fragment(), OnMapReadyCallback {
                 ),
                 LOCATION_PERMISSION_REQUEST_CODE
             )
+        }
+
+        googleMap.setOnMarkerClickListener { marker ->
+            // Handle marker click
+            selectedMarker = marker
+            true
+        }
+
+        googleMap.setOnMapLongClickListener { latLng ->
+            // Handle map long click
+            selectedMarker = null
+            // Clear previous routes, if any
+            googleMap.clear()
+            // Add a marker at the long click location
+            val newMarker = googleMap.addMarker(MarkerOptions().position(latLng))
+            selectedMarker = newMarker
         }
     }
 
@@ -168,9 +218,75 @@ class MapFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
+    @SuppressLint("MissingPermission")
+    private fun drawRouteToSelectedMarker() {
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            location?.let {
+                selectedMarker?.let { marker ->
+                    // Get the LatLng of the selected marker
+                    val destination = marker.position
+                    // Get the route between the current location and the destination
+                    getDirections(location.latitude, location.longitude, destination.latitude, destination.longitude)
+                }
+            }
+        }
+    }
+
+    private fun getDirections(
+        originLat: Double,
+        originLng: Double,
+        destLat: Double,
+        destLng: Double
+    ) {
+        val apiKey = "YOUR_GOOGLE_MAPS_API_KEY"
+        val retrofitDirections = Retrofit.Builder()
+            .baseUrl("https://maps.googleapis.com/maps/api/directions/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+
+        val directionsService = retrofitDirections.create(DirectionsService::class.java)
+
+        val call = directionsService.getDirections(
+            "$originLat,$originLng",
+            "$destLat,$destLng",
+            apiKey
+        )
+
+        call.enqueue(object : Callback<DirectionsResponse> {
+            override fun onResponse(
+                call: Call<DirectionsResponse>,
+                response: Response<DirectionsResponse>
+            ) {
+                if (response.isSuccessful) {
+                    val directionsResponse = response.body()
+                    directionsResponse?.let {
+                        if (it.routes.isNotEmpty() && it.routes[0].legs.isNotEmpty()) {
+                            val steps = it.routes[0].legs[0].steps
+                            val polylineOptions = PolylineOptions()
+                            for (step in steps) {
+                                polylineOptions.add(LatLng(step.start_location.lat, step.start_location.lng))
+                                polylineOptions.add(LatLng(step.end_location.lat, step.end_location.lng))
+                            }
+                            drawPolyline(polylineOptions)
+                        }
+                    }
+                }
+            }
+
+            override fun onFailure(call: Call<DirectionsResponse>, t: Throwable) {
+                t.printStackTrace()
+            }
+        })
+    }
+
+    private fun drawPolyline(polylineOptions: PolylineOptions) {
+        // Clear previous polylines
+        googleMap.clear()
+        // Draw the new polyline
+        googleMap.addPolyline(polylineOptions.color(Color.BLACK))
+    }
+
     private fun recenterMap() {
-        // Move camera back to user's location
-        // You can get the updated user location using location services
         try {
             fusedLocationClient.lastLocation
                 .addOnSuccessListener { location ->
@@ -179,6 +295,8 @@ class MapFragment : Fragment(), OnMapReadyCallback {
                         // Move camera to user's current location
                         val userLocation = LatLng(location.latitude, location.longitude)
                         googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 15f))
+                        // Also, trigger the route drawing when recentering the map
+                        drawRouteToSelectedMarker()
                     }
                 }
         } catch (securityException: SecurityException) {
