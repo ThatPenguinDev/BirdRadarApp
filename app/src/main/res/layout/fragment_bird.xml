@@ -17,18 +17,13 @@
         android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
         app:title="Rare Sightings" />
 
-    <!-- Your existing content goes here -->
-
-    <!-- Add the filter options -->
-    <androidx.cardview.widget.CardView
+    <!-- RecyclerView to display eBird data -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerView"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="30dp"
-        app:cardCornerRadius="30dp"
-        app:cardElevation="20dp"
-        android:layout_below="@id/toolbar">
+        android:layout_height="368dp"
+        android:layout_below="@id/toolbar"
+        android:layout_marginTop="114dp" />
 
-        <!-- Rest of your layout -->
-
-    </androidx.cardview.widget.CardView>
 </RelativeLayout>
+
