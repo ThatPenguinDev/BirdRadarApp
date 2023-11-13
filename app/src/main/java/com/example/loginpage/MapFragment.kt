@@ -1,6 +1,3 @@
-// MapFragment.kt
-package com.example.loginpage
-
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
@@ -18,6 +15,33 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MarkerOptions
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.Query
+import com.example.loginpage.R
+
+
+data class Observation(
+    val lat: Double,
+    val lng: Double,
+    val comName: String
+)
+
+interface EBirdService {
+    @GET("data/obs/geo/recent")
+    fun getRecentObservations(
+        @Query("lat") latitude: Double,
+        @Query("lng") longitude: Double,
+        @Query("dist") distance: Int,
+        @Header("X-eBirdApiToken") apiKey: String
+    ): Call<List<Observation>>
+}
 
 class MapFragment : Fragment(), OnMapReadyCallback {
 
@@ -30,6 +54,13 @@ class MapFragment : Fragment(), OnMapReadyCallback {
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1
     }
+
+    private val retrofit = Retrofit.Builder()
+        .baseUrl("https://api.ebird.org/v2/")
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    private val eBirdService = retrofit.create(EBirdService::class.java)
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -65,20 +96,8 @@ class MapFragment : Fragment(), OnMapReadyCallback {
             // Initialize FusedLocationProviderClient
             fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireContext())
 
-            // Get the last known location
-            try {
-                fusedLocationClient.lastLocation
-                    .addOnSuccessListener { location ->
-                        // Check if the location is not null
-                        if (location != null) {
-                            // Move camera to user's current location
-                            val userLocation = LatLng(location.latitude, location.longitude)
-                            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 15f))
-                        }
-                    }
-            } catch (securityException: SecurityException) {
-                securityException.printStackTrace()
-            }
+            // Fetch and display birding hotspots
+            fetchAndDisplayHotspots()
         } else {
             // Request location permission
             requestPermissions(
@@ -96,6 +115,57 @@ class MapFragment : Fragment(), OnMapReadyCallback {
             requireContext(),
             Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun fetchAndDisplayHotspots() {
+        // Fetch user's last known location
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            // Check if the location is not null
+            if (location != null) {
+                // Specify the radius around the user's location (in kilometers)
+                val radius = 50
+
+                // Call eBird API to get hotspots within the specified radius
+                val call = eBirdService.getRecentObservations(
+                    location.latitude,
+                    location.longitude,
+                    radius,
+                    "pupv1pi6f4dh"
+                )
+
+                call.enqueue(object : Callback<List<Observation>> {
+                    override fun onResponse(
+                        call: Call<List<Observation>>,
+                        response: Response<List<Observation>>
+                    ) {
+                        if (response.isSuccessful) {
+                            val observations = response.body()
+                            observations?.let {
+                                for (observation in it) {
+                                    val hotspotLocation = LatLng(observation.lat, observation.lng)
+                                    val marker =
+                                        MarkerOptions().position(hotspotLocation).title(observation.comName)
+                                    googleMap.addMarker(marker)
+                                }
+                            }
+                        }
+                    }
+
+                    override fun onFailure(call: Call<List<Observation>>, t: Throwable) {
+                        t.printStackTrace()
+                    }
+                })
+
+                // Move the camera to the user's location
+                googleMap.moveCamera(
+                    CameraUpdateFactory.newLatLngZoom(
+                        LatLng(location.latitude, location.longitude),
+                        15f
+                    )
+                )
+            }
+        }
     }
 
     private fun recenterMap() {

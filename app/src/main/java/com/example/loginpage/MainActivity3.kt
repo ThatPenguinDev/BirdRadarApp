@@ -2,6 +2,7 @@
 package com.example.loginpage
 
 import FilterFragment
+import MapFragment
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.fragment.app.Fragment
