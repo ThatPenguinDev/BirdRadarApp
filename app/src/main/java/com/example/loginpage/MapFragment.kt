@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.fragment.app.Fragment
 import com.example.loginpage.R
@@ -17,6 +18,7 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
 import retrofit2.Call
@@ -27,12 +29,12 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Query
-import com.google.android.gms.maps.model.Marker
 
 data class Observation(
     val lat: Double,
     val lng: Double,
-    val comName: String
+    val comName: String,
+    var birdName: String = ""
 )
 
 interface EBirdService {
@@ -132,6 +134,19 @@ class MapFragment : Fragment(), OnMapReadyCallback {
 
             // Fetch and display birding hotspots
             fetchAndDisplayHotspots()
+
+            // Set up the marker click listener
+            googleMap.setOnMarkerClickListener { marker ->
+                // Handle marker click
+                selectedMarker = marker
+                // Center the map on the selected marker
+                centerMapOnMarker(selectedMarker)
+                // Show bird information
+                selectedMarker?.let {
+                    displayBirdInfo(it.title, it.position)
+                }
+                true
+            }
         } else {
             // Request location permission
             requestPermissions(
@@ -143,12 +158,6 @@ class MapFragment : Fragment(), OnMapReadyCallback {
             )
         }
 
-        googleMap.setOnMarkerClickListener { marker ->
-            // Handle marker click
-            selectedMarker = marker
-            true
-        }
-
         googleMap.setOnMapLongClickListener { latLng ->
             // Handle map long click
             selectedMarker = null
@@ -158,6 +167,12 @@ class MapFragment : Fragment(), OnMapReadyCallback {
             val newMarker = googleMap.addMarker(MarkerOptions().position(latLng))
             selectedMarker = newMarker
         }
+    }
+
+    private fun displayBirdInfo(birdName: String?, coordinates: LatLng) {
+        val infoString = "Bird Name: ${birdName.orEmpty()}\nCoordinates: $coordinates"
+        // Example: Display in a Toast
+        Toast.makeText(requireContext(), infoString, Toast.LENGTH_LONG).show()
     }
 
     private fun isLocationPermissionGranted(): Boolean {
@@ -193,9 +208,11 @@ class MapFragment : Fragment(), OnMapReadyCallback {
                             val observations = response.body()
                             observations?.let {
                                 for (observation in it) {
+                                    // Populate the birdName property based on your API response structure
+                                    observation.birdName = observation.comName
                                     val hotspotLocation = LatLng(observation.lat, observation.lng)
                                     val marker =
-                                        MarkerOptions().position(hotspotLocation).title(observation.comName)
+                                        MarkerOptions().position(hotspotLocation).title(observation.birdName)
                                     googleMap.addMarker(marker)
                                 }
                             }
@@ -314,6 +331,13 @@ class MapFragment : Fragment(), OnMapReadyCallback {
 
         // Update the flag
         isSatelliteView = !isSatelliteView
+    }
+
+    private fun centerMapOnMarker(marker: Marker?) {
+        marker?.let {
+            val markerPosition = it.position
+            googleMap.moveCamera(CameraUpdateFactory.newLatLng(markerPosition))
+        }
     }
 
     override fun onRequestPermissionsResult(
